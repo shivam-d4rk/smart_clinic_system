@@ -23,30 +23,47 @@ const AuthPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  setError('');
+  setLoading(true);
 
+  try {
     if (isLogin) {
       const result = await login(formData.email, formData.password);
-      setLoading(false);
-      if (result.success) {
-        if (result.role === 'doctor') navigate('/doctor-dashboard');
-        else navigate('/patient-dashboard');
+      
+      if (result && result.success) {
+        // Updated Role-Based Navigation
+        if (result.role === 'doctor') {
+          navigate('/doctor-dashboard');
+        } else if (result.role === 'admin' || result.role === 'system admin') {
+          navigate('/admin-dashboard');
+        } else if (result.role === 'receptionist') {
+          navigate('/receptionist-dashboard');
+        } else {
+          navigate('/patient-dashboard');
+        }
       } else {
-        setError(result.message);
+        setError(result?.message || 'Login failed! Please check credentials.');
       }
     } else {
       const result = await signup(formData);
-      setLoading(false);
-      if (result.success) {
+      
+      if (result && result.success) {
         setIsLogin(true);
+        alert('Registration successful! Please login.');
       } else {
-        setError(result.message);
+        setError(result?.message || 'Signup failed! Please try again.');
       }
     }
-  };
+  } catch (err) {
+    console.error("Auth error:", err);
+    setError(err.response?.data?.message || err.message || 'Something went wrong. Server might be waking up!');
+  } finally {
+    // Ye block HAMESHA chalega, chaotic network drops ya errors ke bawajood loading state band kar dega!
+    setLoading(false);
+  }
+};
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 antialiased">
