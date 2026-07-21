@@ -36,27 +36,21 @@ const PatientDashboard = () => {
         setError('');
         console.log("[DEBUG-FRONTEND] Initiating clinical data synchronization...");
         
-        // Direct parallel pipeline calls to Port 5000 endpoints
+        // Direct parallel pipeline calls to API
         const [apptRes, prescriptionRes, doctorsRes] = await Promise.all([
-          API.get('/patient/appointments'),
-          API.get('/patient/prescriptions'),
-          API.get('/patient/available-doctors')
+          API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
+          API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } })),
+          API.get('/patient/available-doctors').catch(() => ({ data: { success: false, data: [] } }))
         ]);
         
-        console.log("[DEBUG-FRONTEND] API Responses received:", {
-          appointments: apptRes.data,
-          prescriptions: prescriptionRes.data,
-          doctors: doctorsRes.data
-        });
-
-        if (apptRes.data.success) setAppointments(apptRes.data.data);
-        if (prescriptionRes.data.success) setPrescriptions(prescriptionRes.data.data);
-        if (doctorsRes.data.success) setDoctors(doctorsRes.data.data);
+        if (apptRes.data?.success) setAppointments(apptRes.data.data || []);
+        if (prescriptionRes.data?.success) setPrescriptions(prescriptionRes.data.data || []);
+        if (doctorsRes.data?.success) setDoctors(doctorsRes.data.data || []);
         
       } catch (err) {
         console.error("[CRITICAL FRONTEND FAULT] Sync failure:", err);
         setError('Failed to sync live clinical data from database pipeline.');
-      } finally {
+      } fontFinally: {
         setLoading(false);
       }
     };
@@ -78,11 +72,11 @@ const PatientDashboard = () => {
       console.log("[DEBUG-BOOKING] Sending payload data:", bookingData);
       
       const res = await API.post('/patient/appointments', bookingData);
-      if (res.data.success) {
+      if (res.data?.success) {
         setBookingSuccess('Appointment booked successfully inside clinical infrastructure!');
         
         // Instantly prepend the newly created record to history view state
-        setAppointments([res.data.data, ...appointments]); 
+        setAppointments((prev) => [res.data.data, ...prev]); 
         
         // Reset state framework fields cleanly
         setTimeout(() => { 
@@ -107,6 +101,9 @@ const PatientDashboard = () => {
       </div>
     );
   }
+
+  // Safe User ID Extractor
+  const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
 
   return (
     <div className="min-h-screen bg-slate-50 flex antialiased text-slate-800">
@@ -161,12 +158,12 @@ const PatientDashboard = () => {
         {/* Global Patient Bar */}
         <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, {user?.name}</h1>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, {user?.name || 'Patient'}</h1>
             <p className="text-sm text-slate-500">Official Patient Electronic Health Record (EHR).</p>
           </div>
           <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">ID: {user?.id?.slice(0, 8).toUpperCase()}</span>
+            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">ID: {userIdDisplay}</span>
           </div>
         </header>
 
@@ -222,13 +219,13 @@ const PatientDashboard = () => {
                     </thead>
                     <tbody className="divide-y divide-slate-100 text-sm">
                       {appointments.map((appt) => (
-                        <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="p-4 pl-6 font-semibold text-slate-900">{appt.Doctor?.name || 'Medical Officer'}</td>
+                        <tr key={appt.id || Math.random()} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="p-4 pl-6 font-semibold text-slate-900">{appt.Doctor?.name || appt.doctorName || 'Medical Officer'}</td>
                           <td className="p-4 text-slate-600">{appt.appointmentDate}</td>
                           <td className="p-4 text-slate-600">{appt.slot}</td>
                           <td className="p-4 pr-6">
                             <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 uppercase">
-                              {appt.status}
+                              {appt.status || 'Scheduled'}
                             </span>
                           </td>
                         </tr>
@@ -250,10 +247,9 @@ const PatientDashboard = () => {
             ) : (
               <div className="space-y-4">
                 {prescriptions.map((p) => (
-                  <div key={p.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                  <div key={p.id || Math.random()} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                     <div className="flex justify-between items-start">
                       <div>
-                        {/* Dynamic Doctor Name with Multi-Level Fallbacks */}
                         <h4 className="font-bold text-slate-900">
                           Dr. {p.Doctor?.name || p.DoctorName || p.doctorName || 'Medical Specialist'}
                         </h4>
