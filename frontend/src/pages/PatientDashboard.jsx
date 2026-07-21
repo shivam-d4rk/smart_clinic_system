@@ -253,8 +253,11 @@ const PatientDashboard = () => {
                   <div key={p.id} className="p-4 bg-slate-50 rounded-xl border border-slate-200">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h4 className="font-bold text-slate-900">{p.Doctor?.name || 'Medical Specialist'}</h4>
-                        <p className="text-xs text-slate-500">Issued on: {p.Appointment?.appointmentDate || 'Recent Session'}</p>
+                        {/* Dynamic Doctor Name with Multi-Level Fallbacks */}
+                        <h4 className="font-bold text-slate-900">
+                          Dr. {p.Doctor?.name || p.DoctorName || p.doctorName || 'Medical Specialist'}
+                        </h4>
+                        <p className="text-xs text-slate-500">Issued on: {p.Appointment?.appointmentDate || p.createdAt?.slice(0, 10) || 'Recent Session'}</p>
                       </div>
                       <span className="px-2.5 py-1 text-xs font-bold bg-emerald-50 text-emerald-700 rounded-full uppercase">{p.status || 'Active'}</span>
                     </div>

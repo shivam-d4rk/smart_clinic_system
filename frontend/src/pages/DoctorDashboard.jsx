@@ -23,6 +23,7 @@ const DoctorDashboard = () => {
   const [activeAppointment, setActiveAppointment] = useState(null);
   const [medicines, setMedicines] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Fetch allocated appointments for this logged-in Doctor
   useEffect(() => {
@@ -30,7 +31,7 @@ const DoctorDashboard = () => {
       try {
         setLoading(true);
         setError('');
-        const res = await API.get('/doctor/appointments'); // Target doctor appointments API
+        const res = await API.get('/doctor/appointments');
         if (res.data.success) {
           setAppointments(res.data.data);
         }
@@ -44,47 +45,74 @@ const DoctorDashboard = () => {
     fetchDoctorSchedule();
   }, []);
 
-  // 1. Updated Submit Function with Alert Errors to show what is wrong
-const handlePrescriptionSubmit = async (e) => {
-  e.preventDefault();
-  
-  if (!activeAppointment || !medicines.trim()) {
-    alert("Please select a patient and enter some medicines first.");
-    return;
-  }
-
-  try {
-    setError('');
-    setSubmitSuccess('');
-    console.log("[DEBUG-RX] Submitting prescription for appointment:", activeAppointment.id);
-
-    const res = await API.post('/doctor/prescriptions', {
-      appointmentId: activeAppointment.id,
-      patientId: activeAppointment.patientId || activeAppointment.Patient?.id, // Dynamic fallback if key names differ
-      medicines: medicines
-    });
-
-    if (res.data.success) {
-      setSubmitSuccess('Prescription issued successfully!');
-      setMedicines('');
-      setActiveAppointment(null); // Clear form desk
-      
-      // Update local state queue instantly
-      const updated = appointments.map(appt => 
-        appt.id === activeAppointment.id ? { ...appt, status: 'completed' } : appt
-      );
-      setAppointments(updated);
-      
-      // Clear success notification
-      setTimeout(() => setSubmitSuccess(''), 3000);
+  // Updated Prescription Submit Handler with Detailed Fallbacks
+  const handlePrescriptionSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!activeAppointment || !medicines.trim()) {
+      alert("Please select a patient and enter some medicines first.");
+      return;
     }
-  } catch (err) {
-    console.error("[CRITICAL RX SUBMIT ERROR]:", err);
-    // Yeh alert aapko exact bata dega agar backend crash ho raha hoga
-    setError(err.response?.data?.message || 'Failed to submit digital prescription record. Check console.');
-    alert('Error: ' + (err.response?.data?.message || 'Server connection failed.'));
-  }
-};
+
+    // Safely extract Patient ID regardless of Sequelize association structure
+    const extractedPatientId = 
+      activeAppointment.patientId || 
+      activeAppointment.PatientId || 
+      activeAppointment.Patient?.id;
+
+    if (!extractedPatientId) {
+      alert("Error: Patient ID is missing for this appointment. Check backend doctor/appointments response.");
+      console.error("[RX ERROR] Missing Patient ID in active appointment object:", activeAppointment);
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      setError('');
+      setSubmitSuccess('');
+      
+      console.log("[DEBUG-RX] Submitting Payload:", {
+        appointmentId: activeAppointment.id,
+        patientId: extractedPatientId,
+        medicines: medicines
+      });
+
+      const res = await API.post('/doctor/prescriptions', {
+        appointmentId: activeAppointment.id,
+        patientId: extractedPatientId,
+        medicines: medicines,
+        diagnosis: "General Checkup"
+      });
+
+      if (res.data.success || res.status === 200 || res.status === 201) {
+        setSubmitSuccess('Prescription issued successfully!');
+        setMedicines('');
+        setActiveAppointment(null); // Clear form desk
+        
+        // Update local state queue instantly
+        const updated = appointments.map(appt => 
+          appt.id === activeAppointment.id ? { ...appt, status: 'completed' } : appt
+        );
+        setAppointments(updated);
+        
+        // Clear success notification
+        setTimeout(() => setSubmitSuccess(''), 3000);
+      }
+    } catch (err) {
+      console.error("[CRITICAL RX SUBMIT ERROR]:", err);
+      
+      // Detailed error reporting
+      const serverErrorMessage = 
+        err.response?.data?.message || 
+        err.response?.data?.error || 
+        (err.response ? `Server Error (${err.response.status})` : 'Server connection failed. Is Backend running?');
+
+      setError(serverErrorMessage);
+      alert(`Rx Issue Failed: ${serverErrorMessage}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -121,7 +149,7 @@ const handlePrescriptionSubmit = async (e) => {
         </button>
       </aside>
 
-      {/* MAIN MAIN PANELS */}
+      {/* MAIN PANELS */}
       <main className="flex-1 p-8 overflow-y-auto">
         {error && (
           <div className="mb-6 p-4 bg-amber-50 border-l-4 border-amber-500 rounded-xl flex items-center gap-3 text-amber-800 text-sm font-medium shadow-sm">
@@ -183,7 +211,9 @@ const handlePrescriptionSubmit = async (e) => {
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {appointments.map((appt) => (
                       <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="p-4 pl-6 font-semibold text-slate-900">{appt.Patient?.name || 'Walk-in Patient'}</td>
+                        <td className="p-4 pl-6 font-semibold text-slate-900">
+                          {appt.Patient?.name || appt.patientName || 'Walk-in Patient'}
+                        </td>
                         <td className="p-4 text-slate-600">{appt.slot}</td>
                         <td className="p-4 pr-6">
                           {appt.status === 'completed' ? (
@@ -218,7 +248,9 @@ const handlePrescriptionSubmit = async (e) => {
               <form onSubmit={handlePrescriptionSubmit} className="space-y-4 mt-4">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
                   <p className="text-slate-500">Treating Patient:</p>
-                  <p className="font-bold text-slate-800 text-sm mt-0.5">{activeAppointment.Patient?.name}</p>
+                  <p className="font-bold text-slate-800 text-sm mt-0.5">
+                    {activeAppointment.Patient?.name || activeAppointment.patientName || 'Patient'}
+                  </p>
                   <p className="text-slate-400 mt-1">Slot: {activeAppointment.slot}</p>
                 </div>
                 <div>
@@ -234,9 +266,11 @@ const handlePrescriptionSubmit = async (e) => {
                 </div>
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-teal-900 hover:bg-teal-800 text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
+                  disabled={isSubmitting}
+                  className="w-full py-2.5 bg-teal-900 hover:bg-teal-800 disabled:bg-slate-400 text-white font-semibold text-sm rounded-xl transition-all shadow-sm flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Send className="h-4 w-4" /> Issue RX Record
+                  <Send className="h-4 w-4" /> 
+                  {isSubmitting ? 'Issuing Record...' : 'Issue RX Record'}
                 </button>
               </form>
             ) : (

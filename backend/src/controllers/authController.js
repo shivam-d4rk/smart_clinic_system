@@ -6,29 +6,43 @@ import generateToken from '../utils/generateToken.js';
 // @route   POST /api/auth/signup
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password, role, phone } = req.body;
+    // 1. Extract adminSecretKey from request body
+    const { name, email, password, role, phone, adminSecretKey } = req.body;
 
-    // 1. Check if user already exists
+    // Check if user already exists
     const userExists = await User.findOne({ where: { email } });
     if (userExists) {
-      return res.status(400).json({ success: false, message: 'Yeh email pehle se registered hai' });
+      return res.status(400).json({ success: false, message: 'This email is already registered!' });
     }
 
-    // 2. Hash password securely
+    const requestedRole = role ? role.toLowerCase() : 'patient';
+
+    // 🔒 SECURITY CHECK: If role is Admin, verify Secret Key
+    if (requestedRole === 'admin' || requestedRole === 'system admin') {
+      const MASTER_KEY = process.env.ADMIN_SECRET_KEY || 'ClinicAdmin2026'; // Secret Key
+      
+      if (!adminSecretKey || adminSecretKey !== MASTER_KEY) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'Invalid Admin Secret Key! Access Denied.' 
+        });
+      }
+    }
+
+    // Hash password securely
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 3. Insert record into PostgreSQL database
+    // Insert record into PostgreSQL database
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
-      role: role ? role.toLowerCase() : 'patient', // Force standard lowercase validation consistency
+      role: requestedRole,
       phone
     });
 
     if (user) {
-      // 4. Set HttpOnly JWT session token inside browser cookies
       generateToken(res, user.id);
 
       return res.status(201).json({
@@ -58,7 +72,7 @@ export const loginUser = async (req, res) => {
     
     // 2. Check credentials validity matrix
     if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ success: false, message: 'Galat email ya password' });
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
     // 3. Generate dynamic token state mapping session cookie
@@ -71,7 +85,7 @@ export const loginUser = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        phone: user.phone // Added to sync dashboard dashboard cards seamlessly
+        phone: user.phone // Added to sync dashboard cards seamlessly
       }
     });
   } catch (error) {
@@ -79,12 +93,10 @@ export const loginUser = async (req, res) => {
   }
 };
 
-// 🌟 ADDED: User persistent session trace hook
 // @desc    Get current logged in user profile details
 // @route   GET /api/auth/me
 export const getMe = async (req, res) => {
   try {
-    // req.user protection pipeline middleware se automatic attach hokar aata hai
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'No active clinical session found' });
     }
@@ -104,7 +116,6 @@ export const getMe = async (req, res) => {
   }
 };
 
-// 🌟 ADDED: Secure clean session logout engine
 // @desc    Logout user / clear secure cookie storage
 // @route   POST /api/auth/logout
 export const logoutUser = async (req, res) => {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { Stethoscope, Mail, Lock, User, Phone, Briefcase, Activity } from 'lucide-react';
+import { Stethoscope, Mail, Lock, User, Phone, Briefcase, Activity, KeyRound } from 'lucide-react';
 
 const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -13,7 +13,8 @@ const AuthPage = () => {
     email: '',
     password: '',
     phone: '',
-    role: 'patient'
+    role: 'patient',
+    adminSecretKey: '' // Added Secret Key field to state
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -128,6 +129,30 @@ const AuthPage = () => {
                     </select>
                   </div>
                 </div>
+
+                {/* 🔒 Dynamic Secret Admin Key Field (Sirf tabhi dikhega jab Admin select hoga) */}
+                {(formData.role === 'admin' || formData.role === 'System Admin') && (
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1 animate-fadeIn">
+                    <label className="block text-xs font-bold text-amber-800 uppercase tracking-wider">
+                      Master Admin Secret Passkey *
+                    </label>
+                    <div className="relative">
+                      <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-600" />
+                      <input
+                        type="password"
+                        name="adminSecretKey"
+                        required
+                        value={formData.adminSecretKey}
+                        onChange={handleChange}
+                        placeholder="Enter Clinic Master Key"
+                        className="w-full pl-9 pr-3 py-2 bg-white border border-amber-300 rounded-lg text-slate-800 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                      />
+                    </div>
+                    <p className="text-[10px] text-amber-700 pt-0.5">
+                      Restricted to authorized system administrators only.
+                    </p>
+                  </div>
+                )}
               </>
             )}
 

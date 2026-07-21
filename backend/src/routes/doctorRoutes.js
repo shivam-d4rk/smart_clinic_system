@@ -5,13 +5,15 @@ import { protect, restrictTo } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
-// Dono routes par protect layer laga di taaki login compulsory ho, 
-// aur restrictTo('doctor') lagaya taaki sirf doctors access kar sakein!
+// Auth & Role Protection
 router.use(protect);
 router.use(restrictTo('doctor'));
 
 router.get('/appointments', getDoctorAppointments);
 router.put('/appointments/:id/status', updateAppointmentStatus);
-router.post('/prescription', createPrescription);
+
+// 🛠️ FIX HERE: '/prescription' ko '/prescriptions' kar do 
+// (ya fir frontend me '/doctor/prescription' bhejo)
+router.post('/prescriptions', createPrescription); 
 
 export default router;
