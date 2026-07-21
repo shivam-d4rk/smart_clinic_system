@@ -6,7 +6,7 @@ const AuthContext = createContext(null);
 
 // Backend API Base Configuration setup trigger
 const API = axios.create({
-  baseURL: 'http://localhost:5000/api',
+  baseURL: 'https://smart-clinic-backend-adym.onrender.com/api',
   withCredentials: true // Http-only cookies ko dynamic transfer karne ke liye compulsory hai
 });
 
