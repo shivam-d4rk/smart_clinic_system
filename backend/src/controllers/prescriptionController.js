@@ -1,5 +1,5 @@
 import Prescription from '../models/Prescription.js';
-import Appointment from '../models/Appointment.js';
+import Appointment from '../models/appointment.js';
 
 // @desc    Create a new Prescription for a Patient
 // @route   POST /api/doctor/prescriptions

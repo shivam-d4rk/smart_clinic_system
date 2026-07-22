@@ -1,4 +1,4 @@
-import Appointment from '../models/Appointment.js';
+import Appointment from '../models/appointment.js';
 import User from '../models/User.js';
 import { Op } from 'sequelize';
 import Prescription from '../models/Prescription.js';

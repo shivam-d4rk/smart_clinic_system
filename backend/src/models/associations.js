@@ -1,5 +1,5 @@
 import User from './User.js';
-import Appointment from './Appointment.js';
+import Appointment from './appointment.js';
 import Prescription from './Prescription.js';
 
 export const setupAssociations = () => {

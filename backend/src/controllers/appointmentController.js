@@ -1,4 +1,4 @@
-import Appointment from '../models/Appointment.js';
+import Appointment from '../models/appointment.js';
 import User from '../models/User.js';
 
 // @desc    Get all appointments for the logged-in Doctor (With Patient Details)
