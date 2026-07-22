@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, API } from '../context/AuthContext'; // 🌟 AuthContext se shared API import kiya jisme JWT Token Interceptor pehle se attach hai
 import { 
   Calendar, FileText, User, LogOut, 
   Activity, Clock, CheckCircle, ShieldAlert, PlusCircle, AlertCircle 
 } from 'lucide-react';
-import axios from 'axios';
-
-const API = axios.create({
-  baseURL: 'https://smart-clinic-backend-adym.onrender.com/api',
-  withCredentials: true
-});
 
 const PatientDashboard = () => {
   const { user, logout } = useAuth();
@@ -28,7 +22,12 @@ const PatientDashboard = () => {
   const [bookingData, setBookingData] = useState({ doctorId: '', appointmentDate: '', slot: '10:30 AM' });
   const [bookingSuccess, setBookingSuccess] = useState('');
 
-  // Clean parallel execution blocks
+  // Safe Profile Fallbacks (Fixes 'Welcome, Patient' and 'N/A' issue)
+  const userName = user?.name || user?.fullName || 'Patient';
+  const userPhone = user?.phone || user?.phoneNumber || 'N/A';
+  const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
+
+  // Fetch live pipeline data
   useEffect(() => {
     const fetchMedicalRecords = async () => {
       try {
@@ -36,16 +35,24 @@ const PatientDashboard = () => {
         setError('');
         console.log("[DEBUG-FRONTEND] Initiating clinical data synchronization...");
         
-        // Direct parallel pipeline calls to API
+        // Dynamic requests with proper Bearer Token and Multiple Endpoint Fallbacks
         const [apptRes, prescriptionRes, doctorsRes] = await Promise.all([
           API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
           API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } })),
-          API.get('/patient/available-doctors').catch(() => ({ data: { success: false, data: [] } }))
+          // Fallback to /doctors if /patient/available-doctors fails
+          API.get('/doctors').catch(() => API.get('/patient/available-doctors')).catch(() => ({ data: { success: false, data: [] } }))
         ]);
         
-        if (apptRes.data?.success) setAppointments(apptRes.data.data || []);
-        if (prescriptionRes.data?.success) setPrescriptions(prescriptionRes.data.data || []);
-        if (doctorsRes.data?.success) setDoctors(doctorsRes.data.data || []);
+        if (apptRes.data?.success || Array.isArray(apptRes.data)) {
+          setAppointments(apptRes.data.data || apptRes.data || []);
+        }
+        if (prescriptionRes.data?.success || Array.isArray(prescriptionRes.data)) {
+          setPrescriptions(prescriptionRes.data.data || prescriptionRes.data || []);
+        }
+        
+        // Flexible Array Extraction for Doctor Dropdown
+        const doctorList = doctorsRes.data?.data || (Array.isArray(doctorsRes.data) ? doctorsRes.data : []);
+        setDoctors(doctorList);
         
       } catch (err) {
         console.error("[CRITICAL FRONTEND FAULT] Sync failure:", err);
@@ -76,7 +83,8 @@ const PatientDashboard = () => {
         setBookingSuccess('Appointment booked successfully inside clinical infrastructure!');
         
         // Instantly prepend the newly created record to history view state
-        setAppointments((prev) => [res.data.data, ...prev]); 
+        const newAppointment = res.data.data || res.data;
+        setAppointments((prev) => [newAppointment, ...prev]); 
         
         // Reset state framework fields cleanly
         setTimeout(() => { 
@@ -101,9 +109,6 @@ const PatientDashboard = () => {
       </div>
     );
   }
-
-  // Safe User ID Extractor
-  const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
 
   return (
     <div className="min-h-screen bg-slate-50 flex antialiased text-slate-800">
@@ -158,7 +163,7 @@ const PatientDashboard = () => {
         {/* Global Patient Bar */}
         <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, {user?.name || 'Patient'}</h1>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, {userName}</h1>
             <p className="text-sm text-slate-500">Official Patient Electronic Health Record (EHR).</p>
           </div>
           <div className="flex items-center gap-3 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
@@ -189,7 +194,7 @@ const PatientDashboard = () => {
                 <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><ShieldAlert className="h-6 w-6" /></div>
                 <div>
                   <p className="text-sm text-slate-500 font-medium">Registered Phone</p>
-                  <h3 className="text-base font-bold text-slate-900 mt-0.5">{user?.phone || 'N/A'}</h3>
+                  <h3 className="text-base font-bold text-slate-900 mt-0.5">{userPhone}</h3>
                 </div>
               </div>
             </section>
@@ -272,7 +277,7 @@ const PatientDashboard = () => {
             <div className="grid grid-cols-2 gap-6 text-sm">
               <div>
                 <label className="text-xs text-slate-400 font-semibold block uppercase tracking-wider mb-1">Full Identity Name</label>
-                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200">{user?.name}</p>
+                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200">{userName}</p>
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-semibold block uppercase tracking-wider mb-1">Secure Registered Email</label>
@@ -280,11 +285,11 @@ const PatientDashboard = () => {
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-semibold block uppercase tracking-wider mb-1">Contact Handset Line</label>
-                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200">{user?.phone || 'Not Provided'}</p>
+                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200">{userPhone}</p>
               </div>
               <div>
                 <label className="text-xs text-slate-400 font-semibold block uppercase tracking-wider mb-1">System Global Role</label>
-                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200 uppercase tracking-wide">{user?.role}</p>
+                <p className="font-semibold text-slate-800 p-2.5 bg-slate-50 rounded-lg border border-slate-200 uppercase tracking-wide">{user?.role || 'PATIENT'}</p>
               </div>
             </div>
           </section>
@@ -314,7 +319,7 @@ const PatientDashboard = () => {
                   <option value="">-- Choose From Active Practitioners --</option>
                   {doctors.map((doc) => (
                     <option key={doc.id} value={doc.id}>
-                      {doc.name} ({doc.email})
+                      Dr. {doc.name} ({doc.specialization || doc.email})
                     </option>
                   ))}
                 </select>
