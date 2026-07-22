@@ -27,7 +27,6 @@ const PORT = process.env.PORT || 5000;
 */
 app.use(cookieParser());
 app.use(helmet());
-import cors from 'cors';
 
 const allowedOrigins = [
   'http://localhost:5173',
@@ -37,12 +36,11 @@ const allowedOrigins = [
 
 app.use(cors({
   origin: function (origin, callback) {
-    // allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV !== 'production') {
       return callback(null, true);
     } else {
-      return callback(null, true); // Production test ke liye sab allow kar do agar multiple preview URLs ban rahe hain
+      return callback(null, true); // Fallback to allow requests during testing
     }
   },
   credentials: true
@@ -61,6 +59,10 @@ app.get('/health', (req, res) => {
     status: 'Server is running perfectly!',
     timestamp: new Date().toISOString()
   });
+});
+
+app.get('/', (req, res) => {
+  res.send('Smart Clinic Backend Engine is Live!');
 });
 
 /* 
@@ -98,7 +100,7 @@ const initializeSystem = async () => {
     // 2. Trigger relationships maps inside associations module file
     setupAssociations();
 
-    // 3. Synchronize database mapping columns safely (Single Clean Sync Execution)
+    // 3. Synchronize database mapping columns safely
     await sequelize.sync({ alter: true });
     console.log('[MIGRATION] PostgreSQL tables synchronized successfully.');
 
