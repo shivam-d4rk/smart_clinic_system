@@ -1,6 +1,24 @@
-import Appointment from '../models/Appointment.js';
+import Appointment from '../models/appointment.js';
 import Prescription from '../models/Prescription.js';
 import User from '../models/User.js';
+
+// Get all registered doctors for dropdowns (Regardless of online/offline status)
+export const getAllDoctors = async (req, res) => {
+  try {
+    const doctors = await User.findAll({
+      where: { role: 'doctor' },
+      attributes: ['id', 'name', 'email', 'specialization', 'department']
+    });
+
+    res.status(200).json({
+      success: true,
+      data: doctors
+    });
+  } catch (error) {
+    console.error("[GET DOCTORS FAULT]:", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 
 // Get appointments assigned to the logged-in doctor
 export const getDoctorAppointments = async (req, res) => {

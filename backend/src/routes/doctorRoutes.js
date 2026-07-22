@@ -2,6 +2,7 @@ import express from 'express';
 import { getDoctorAppointments, updateAppointmentStatus } from '../controllers/appointmentController.js';
 import { createPrescription } from '../controllers/prescriptionController.js';
 import { protect, restrictTo } from '../middlewares/authMiddleware.js';
+import { getAllDoctors } from '../controllers/doctorController.js';
 
 const router = express.Router();
 
@@ -10,6 +11,7 @@ router.use(protect);
 router.use(restrictTo('doctor'));
 
 router.get('/appointments', getDoctorAppointments);
+router.get('/doctors', getAllDoctors);
 router.put('/appointments/:id/status', updateAppointmentStatus);
 
 // 🛠️ FIX HERE: '/prescription' ko '/prescriptions' kar do 
