@@ -1,50 +1,83 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-// 1. Authenticate Token Middleware (Check karein ki user logged in hai ya nahi)
+// 1. Authenticate Token Middleware
 export const protect = async (req, res, next) => {
   let token;
 
-  // Thunder Client/Browser ke cookies se token read karein
-  if (req.cookies && req.cookies.jwt) {
-    token = req.cookies.jwt;
-  } 
-  // Alternately, agar token Authorization Header me aa raha ho (Bearer token)
-  else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // 1. Header se Authorization token check karein (Bearer / bearer)
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.toLowerCase().startsWith('bearer')
+  ) {
     token = req.headers.authorization.split(' ')[1];
+  } 
+  // 2. Cookies se token read karein (Fallback)
+  else if (req.cookies && req.cookies.jwt) {
+    token = req.cookies.jwt;
   }
 
   if (!token) {
-    return res.status(401).json({ success: false, message: 'Aap logged in nahi hain, please login karein' });
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Please log in to access this resource!' 
+    });
   }
 
   try {
-    // Token ko verify karein hamari secret key se
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-    // Database se user ka current record nikaalein bina password ke aur use 'req.user' me save kar dein
-    req.user = await User.findByPk(decoded.id);
+    // Secret Key fallback (Render env variable compatibility fix)
+    const secret = process.env.JWT_SECRET || process.env.JWT_SECRET_KEY;
     
-    if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Is token wala user ab exist nahi karta' });
+    if (!secret) {
+      console.error("[AUTH ERROR]: No JWT secret found in environment variables!");
     }
 
-    next(); // Agle controller function par jane ki permission dein
+    // Token ko verify karein
+    const decoded = jwt.verify(token, secret);
+
+    // Database se user nikaalein (excluding password)
+    req.user = await User.findByPk(decoded.id, {
+      attributes: { exclude: ['password'] }
+    });
+
+    if (!req.user) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'This user no longer exists or token is invalid!' 
+      });
+    }
+
+    next(); // Access granted
   } catch (error) {
-    return res.status(401).json({ success: false, message: 'Invalid Token, authorization failed' });
+    console.error("[JWT VERIFICATION ERROR]:", error.message);
+    return res.status(401).json({ 
+      success: false, 
+      message: 'Invalid or expired token, authorization failed' 
+    });
   }
 };
 
-// 2. Role-Based Authorization Middleware (Strict Permission Engine)
+// 2. Role-Based Authorization Middleware
 export const restrictTo = (...allowedRoles) => {
   return (req, res, next) => {
-    // allowedRoles ek array hoga, jaise ['doctor', 'admin']
-    if (!allowedRoles.includes(req.user.role)) {
+    if (!req.user || !req.user.role) {
       return res.status(403).json({ 
         success: false, 
-        message: 'Aapko is action ko karne ki permission nahi hai (Access Denied)' 
+        message: 'User role not defined!' 
       });
     }
+
+    // Case-insensitive role comparison (e.g. 'doctor' vs 'Doctor')
+    const userRole = req.user.role.toLowerCase();
+    const formattedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+
+    if (!formattedAllowedRoles.includes(userRole)) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'ACCESS DENIED! You do not have permission to perform this action.' 
+      });
+    }
+
     next();
   };
 };
