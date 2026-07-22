@@ -50,7 +50,7 @@ const PatientDashboard = () => {
       } catch (err) {
         console.error("[CRITICAL FRONTEND FAULT] Sync failure:", err);
         setError('Failed to sync live clinical data from database pipeline.');
-      } fontFinally: {
+      } finally {
         setLoading(false);
       }
     };
