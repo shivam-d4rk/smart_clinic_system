@@ -1,15 +1,13 @@
 import React, { createContext, useState, useEffect, useContext } from 'react';
 import axios from 'axios';
 
-// 1. Core Auth Context Instance initialize karein
 const AuthContext = createContext(null);
 
-// Backend API Base Configuration setup trigger
 export const API = axios.create({
   baseURL: 'https://smart-clinic-backend-adym.onrender.com/api',
 });
 
-// ⚡ AXIOS INTERCEPTOR: Har request me Bearer Token attach karega (Cross-origin fix)
+// Interceptor: Har request me Bearer token attach karega
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
   if (token) {
@@ -22,20 +20,20 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 2. Auto-login check jab user page refresh kare (localStorage restoration)
+  // Auto-Restore session on Refresh
   useEffect(() => {
-    const restoreUserSession = () => {
+    const restoreSession = () => {
       try {
         const savedToken = localStorage.getItem('token');
         const savedUser = localStorage.getItem('user');
 
-        if (savedToken && savedUser) {
+        if (savedToken && savedUser && savedUser !== 'undefined') {
           setUser(JSON.parse(savedUser));
         } else {
           setUser(null);
         }
       } catch (error) {
-        console.error("[AUTH-CHECK] Failed to restore session from storage:", error);
+        console.error("Session restore error:", error);
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         setUser(null);
@@ -44,97 +42,69 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    restoreUserSession();
+    restoreSession();
   }, []);
 
-  // 3. User Register (Signup) Function
+  // Login Function
+  const login = async (email, password) => {
+    try {
+      const response = await API.post('/auth/login', { email, password });
+      
+      if (response.data.success || response.data.token) {
+        // Handle all possible backend response structures safely
+        const token = response.data.token || response.data.data?.token;
+        const userData = response.data.user || response.data.data?.user || response.data.data;
+
+        if (token) localStorage.setItem('token', token);
+        if (userData) {
+          localStorage.setItem('user', JSON.stringify(userData));
+          setUser(userData);
+        }
+
+        return { success: true, role: userData?.role };
+      }
+    } catch (error) {
+      return { 
+        success: false, 
+        message: error.response?.data?.message || 'Login failed!' 
+      };
+    }
+  };
+
+  // Signup Function
   const signup = async (userData) => {
     try {
       const response = await API.post('/auth/signup', userData);
       if (response.data.success) {
-        const { token, user: registeredUser } = response.data.data || response.data;
-        
-        // Save to LocalStorage to retain login state on refresh
-        if (token) localStorage.setItem('token', token);
-        if (registeredUser) {
-          localStorage.setItem('user', JSON.stringify(registeredUser));
-          setUser(registeredUser);
-        }
-
         return { success: true };
       }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Signup ke dauran koi takleef hui' 
+        message: error.response?.data?.message || 'Signup failed!' 
       };
     }
   };
 
-  // 4. User Login Function
- // 4. User Login Function
-  const login = async (email, password) => {
-    try {
-      const response = await API.post('/auth/login', { email, password });
-      
-      // Console log karke token check karein
-      console.log("[LOGIN RESPONSE]:", response.data);
-
-      if (response.data.success || response.data.token) {
-        // Backend se token aur user extract karo
-        const token = response.data.token || response.data.data?.token || response.data.data;
-        const loggedInUser = response.data.user || response.data.data?.user;
-
-        if (token && typeof token === 'string') {
-          // Token ko LocalStorage me save karo
-          localStorage.setItem('token', token);
-          console.log("[AUTH] Token saved successfully:", token);
-        } else {
-          console.error("[AUTH ERROR] Token missing in response:", response.data);
-        }
-        
-        if (loggedInUser) {
-          localStorage.setItem('user', JSON.stringify(loggedInUser));
-          setUser(loggedInUser);
-        }
-
-        return { 
-          success: true, 
-          role: loggedInUser?.role 
-        };
-      }
-    } catch (error) {
-      return { 
-        success: false, 
-        message: error.response?.data?.message || 'Email or password is invalid!' 
-      };
-    }
-  };
-
-  // 5. User Logout Function
+  // Logout Function
   const logout = async () => {
     try {
-      console.log("[DEBUG-AUTH] Initializing global sign-out engine...");
-      await API.post('/auth/logout', {}); 
+      await API.post('/auth/logout', {});
     } catch (err) {
-      console.warn("[AUTH WARNING] Backend session cleanup skipped:", err);
+      console.warn("Logout request failed:", err);
     } finally {
-      // Clear persistent browser storage
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       setUser(null);
-      
-      console.log("[DEBUG-AUTH] Frontend token cache destroyed safely.");
       window.location.href = '/';
     }
   };
 
   return (
     <AuthContext.Provider value={{ user, loading, login, signup, logout, setUser }}>
-      {!loading && children} 
+      {!loading && children}
     </AuthContext.Provider>
   );
 };
 
-// Custom Hook banayein taaki baar baar useContext na likhna pade
 export const useAuth = () => useContext(AuthContext);
