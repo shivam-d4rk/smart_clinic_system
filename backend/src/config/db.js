@@ -3,27 +3,43 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// PostgreSQL connection instance configuration
-const sequelize = new Sequelize(
-  process.env.DB_NAME,
-  process.env.DB_USER,
-  process.env.DB_PASSWORD,
-  {
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT || 5432,
-    dialect: 'postgres', // Yahan humne database engine postgres set kar diya
-    logging: false, // Console ko clean rakhne ke liye raw queries hide ki hain
-  }
-);
+const dbUrl = process.env.DATABASE_URL;
 
-const connectDB = async () => {
+export const sequelize = dbUrl
+  ? new Sequelize(dbUrl, {
+      dialect: 'postgres',
+      dialectOptions: {
+        ssl: {
+          require: true,
+          rejectUnauthorized: false // Cloud database SSL handshake requirement
+        }
+      },
+      logging: false
+    })
+  : new Sequelize(
+      process.env.DB_NAME,
+      process.env.DB_USER,
+      process.env.DB_PASSWORD,
+      {
+        host: process.env.DB_HOST,
+        port: process.env.DB_PORT || 5432,
+        dialect: 'postgres',
+        dialectOptions: {
+          ssl: {
+            require: true,
+            rejectUnauthorized: false
+          }
+        },
+        logging: false
+      }
+    );
+
+export const connectDB = async () => {
   try {
     await sequelize.authenticate();
-    console.log('[DATABASE] PostgreSQL (Elephant) engine connected successfully.');
+    console.log('[DATABASE] PostgreSQL connected successfully.');
   } catch (error) {
-    console.error(`[DATABASE ERROR] Postgres connection failed: ${error.message}`);
-    process.exit(1);
+    console.error('[DATABASE ERROR] Postgres connection failed:', error.message);
+    throw error;
   }
 };
-
-export { sequelize, connectDB };
