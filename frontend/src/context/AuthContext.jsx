@@ -5,33 +5,46 @@ import axios from 'axios';
 const AuthContext = createContext(null);
 
 // Backend API Base Configuration setup trigger
-const API = axios.create({
+export const API = axios.create({
   baseURL: 'https://smart-clinic-backend-adym.onrender.com/api',
-  withCredentials: true // Http-only cookies ko dynamic transfer karne ke liye compulsory hai
 });
+
+// ⚡ AXIOS INTERCEPTOR: Har request me Bearer Token attach karega (Cross-origin fix)
+API.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+}, (error) => Promise.reject(error));
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 2. Auto-login check jab user page refresh kare
+  // 2. Auto-login check jab user page refresh kare (localStorage restoration)
   useEffect(() => {
-    const checkLoginStatus = async () => {
+    const restoreUserSession = () => {
       try {
-        // Profile verification check
-        const response = await API.get('/auth/me'); 
-        if (response.data.success) {
-          setUser(response.data.user);
+        const savedToken = localStorage.getItem('token');
+        const savedUser = localStorage.getItem('user');
+
+        if (savedToken && savedUser) {
+          setUser(JSON.parse(savedUser));
+        } else {
+          setUser(null);
         }
       } catch (error) {
-        console.log("[AUTH-CHECK] No active session found.");
-        setUser(null); // Valid session na milne par session trace drop karein
+        console.error("[AUTH-CHECK] Failed to restore session from storage:", error);
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
       } finally {
         setLoading(false);
       }
     };
-    
-    checkLoginStatus();
+
+    restoreUserSession();
   }, []);
 
   // 3. User Register (Signup) Function
@@ -39,7 +52,15 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await API.post('/auth/signup', userData);
       if (response.data.success) {
-        setUser(response.data.data);
+        const { token, user: registeredUser } = response.data.data || response.data;
+        
+        // Save to LocalStorage to retain login state on refresh
+        if (token) localStorage.setItem('token', token);
+        if (registeredUser) {
+          localStorage.setItem('user', JSON.stringify(registeredUser));
+          setUser(registeredUser);
+        }
+
         return { success: true };
       }
     } catch (error) {
@@ -54,14 +75,30 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const response = await API.post('/auth/login', { email, password });
-      if (response.data.success) {
-        setUser(response.data.data);
-        return { success: true, role: response.data.data.role };
+      
+      if (response.data.success || response.data.token) {
+        // Backend Response structure standard handling
+        const token = response.data.token || response.data.data?.token;
+        const loggedInUser = response.data.user || response.data.data?.user || response.data.data;
+
+        if (token) {
+          localStorage.setItem('token', token);
+        }
+        
+        if (loggedInUser) {
+          localStorage.setItem('user', JSON.stringify(loggedInUser));
+          setUser(loggedInUser);
+        }
+
+        return { 
+          success: true, 
+          role: loggedInUser?.role 
+        };
       }
     } catch (error) {
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Galat email ya password' 
+        message: error.response?.data?.message || 'Email or password is invalid!' 
       };
     }
   };
@@ -70,22 +107,22 @@ export const AuthProvider = ({ children }) => {
   const logout = async () => {
     try {
       console.log("[DEBUG-AUTH] Initializing global sign-out engine...");
-      // Backend API ko session destroy karne ke liye call karein
       await API.post('/auth/logout', {}); 
     } catch (err) {
-      console.warn("[AUTH WARNING] Backend session already expired or unreachable:", err);
+      console.warn("[AUTH WARNING] Backend session cleanup skipped:", err);
     } finally {
+      // Clear persistent browser storage
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setUser(null);
-      // Clear all browser cookies manually to break token loops
-      document.cookie = "jwt=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
+      
       console.log("[DEBUG-AUTH] Frontend token cache destroyed safely.");
       window.location.href = '/';
     }
   };
 
-  // 🌟 FIX: Jo aap bhool gaye the - Provider ke sath values return karna compulsory hai!
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, setUser }}>
       {!loading && children} 
     </AuthContext.Provider>
   );
