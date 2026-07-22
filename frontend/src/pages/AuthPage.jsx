@@ -5,7 +5,7 @@ import { Stethoscope, Mail, Lock, User, Phone, Briefcase, Activity, KeyRound } f
 
 const AuthPage = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const { login, signup } = useAuth();
+  const { login, signup, setUser } = useAuth();
   const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
@@ -14,7 +14,7 @@ const AuthPage = () => {
     password: '',
     phone: '',
     role: 'patient',
-    adminSecretKey: '' // Added Secret Key field to state
+    adminSecretKey: ''
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -23,47 +23,49 @@ const AuthPage = () => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
- const handleSubmit = async (e) => {
-  e.preventDefault();
-  setError('');
-  setLoading(true);
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
 
-  try {
-    if (isLogin) {
-      const result = await login(formData.email, formData.password);
-      
-      if (result && result.success) {
-        // Updated Role-Based Navigation
-        if (result.role === 'doctor') {
-          navigate('/doctor-dashboard');
-        } else if (result.role === 'admin' || result.role === 'system admin') {
-          navigate('/admin-dashboard');
-        } else if (result.role === 'receptionist') {
-          navigate('/receptionist-dashboard');
+    try {
+      if (isLogin) {
+        const result = await login(formData.email, formData.password);
+        
+        if (result && result.success) {
+          // Double-check: ensure local user state is synced
+          const savedRole = result.role || localStorage.getItem('role');
+
+          // Updated Role-Based Navigation
+          if (savedRole === 'doctor') {
+            navigate('/doctor-dashboard');
+          } else if (savedRole === 'admin' || savedRole === 'system admin') {
+            navigate('/admin-dashboard');
+          } else if (savedRole === 'receptionist') {
+            navigate('/receptionist-dashboard');
+          } else {
+            navigate('/patient-dashboard');
+          }
         } else {
-          navigate('/patient-dashboard');
+          setError(result?.message || 'Login failed! Please check credentials.');
         }
       } else {
-        setError(result?.message || 'Login failed! Please check credentials.');
+        const result = await signup(formData);
+        
+        if (result && result.success) {
+          setIsLogin(true);
+          alert('Registration successful! Please login with your credentials.');
+        } else {
+          setError(result?.message || 'Signup failed! Please try again.');
+        }
       }
-    } else {
-      const result = await signup(formData);
-      
-      if (result && result.success) {
-        setIsLogin(true);
-        alert('Registration successful! Please login.');
-      } else {
-        setError(result?.message || 'Signup failed! Please try again.');
-      }
+    } catch (err) {
+      console.error("Auth error:", err);
+      setError(err.response?.data?.message || err.message || 'Something went wrong. Server might be waking up!');
+    } finally {
+      setLoading(false);
     }
-  } catch (err) {
-    console.error("Auth error:", err);
-    setError(err.response?.data?.message || err.message || 'Something went wrong. Server might be waking up!');
-  } finally {
-    // Ye block HAMESHA chalega, chaotic network drops ya errors ke bawajood loading state band kar dega!
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 antialiased">
@@ -147,7 +149,7 @@ const AuthPage = () => {
                   </div>
                 </div>
 
-                {/* 🔒 Dynamic Secret Admin Key Field (Sirf tabhi dikhega jab Admin select hoga) */}
+                {/* Dynamic Secret Admin Key Field */}
                 {(formData.role === 'admin' || formData.role === 'System Admin') && (
                   <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl space-y-1 animate-fadeIn">
                     <label className="block text-xs font-bold text-amber-800 uppercase tracking-wider">
@@ -221,7 +223,10 @@ const AuthPage = () => {
           <div className="mt-6 text-center text-sm text-slate-500">
             {isLogin ? "Need a new account? " : "Already have an account? "}
             <button
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => {
+                setError('');
+                setIsLogin(!isLogin);
+              }}
               className="text-blue-600 font-semibold hover:underline bg-transparent border-none cursor-pointer"
             >
               {isLogin ? 'Register Here' : 'Login Here'}
