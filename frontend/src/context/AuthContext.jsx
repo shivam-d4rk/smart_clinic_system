@@ -50,23 +50,34 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await API.post('/auth/login', { email, password });
       
-      if (response.data.success || response.data.token) {
-        // Handle all possible backend response structures safely
-        const token = response.data.token || response.data.data?.token;
-        const userData = response.data.user || response.data.data?.user || response.data.data;
+      console.log("[LOGIN RESPONSE RECEIVED]:", response.data);
 
-        if (token) localStorage.setItem('token', token);
+      if (response.data.success || response.data.token) {
+        // Safe Token & User extract from updated authController
+        const token = response.data.token || response.data.data?.token;
+        const userData = response.data.user || response.data.data;
+
+        if (token) {
+          localStorage.setItem('token', token);
+          console.log("[AUTH CONTEXT] Token saved successfully to localStorage");
+        } else {
+          console.error("[AUTH CONTEXT ERROR] Token field is missing in API response!");
+        }
+
         if (userData) {
           localStorage.setItem('user', JSON.stringify(userData));
           setUser(userData);
         }
 
         return { success: true, role: userData?.role };
+      } else {
+        return { success: false, message: response.data.message || 'Login failed!' };
       }
     } catch (error) {
+      console.error("[LOGIN API FAULT]:", error);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Login failed!' 
+        message: error.response?.data?.message || 'Login failed! Please check credentials.' 
       };
     }
   };
@@ -77,11 +88,14 @@ export const AuthProvider = ({ children }) => {
       const response = await API.post('/auth/signup', userData);
       if (response.data.success) {
         return { success: true };
+      } else {
+        return { success: false, message: response.data.message || 'Signup failed!' };
       }
     } catch (error) {
+      console.error("[SIGNUP API FAULT]:", error);
       return { 
         success: false, 
-        message: error.response?.data?.message || 'Signup failed!' 
+        message: error.response?.data?.message || 'Signup failed! Please try again.' 
       };
     }
   };
