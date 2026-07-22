@@ -72,17 +72,25 @@ export const AuthProvider = ({ children }) => {
   };
 
   // 4. User Login Function
+ // 4. User Login Function
   const login = async (email, password) => {
     try {
       const response = await API.post('/auth/login', { email, password });
       
-      if (response.data.success || response.data.token) {
-        // Backend Response structure standard handling
-        const token = response.data.token || response.data.data?.token;
-        const loggedInUser = response.data.user || response.data.data?.user || response.data.data;
+      // Console log karke token check karein
+      console.log("[LOGIN RESPONSE]:", response.data);
 
-        if (token) {
+      if (response.data.success || response.data.token) {
+        // Backend se token aur user extract karo
+        const token = response.data.token || response.data.data?.token || response.data.data;
+        const loggedInUser = response.data.user || response.data.data?.user;
+
+        if (token && typeof token === 'string') {
+          // Token ko LocalStorage me save karo
           localStorage.setItem('token', token);
+          console.log("[AUTH] Token saved successfully:", token);
+        } else {
+          console.error("[AUTH ERROR] Token missing in response:", response.data);
         }
         
         if (loggedInUser) {
