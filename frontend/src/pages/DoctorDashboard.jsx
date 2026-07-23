@@ -1,52 +1,46 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth, API } from '../context/AuthContext'; // 🌟 AuthContext se shared API import kiya (jisme Bearer token automatically jata hai)
+import { useAuth, API } from '../context/AuthContext';
 import { 
-  Users, Clipboard, CheckCircle, LogOut, 
-  Activity, Clock, FileText, Send, AlertCircle
+  Users, CheckCircle, LogOut, 
+  Activity, Clock, Send, AlertCircle
 } from 'lucide-react';
 
 const DoctorDashboard = () => {
   const { user, logout } = useAuth();
   
-  // Real Database States
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Prescription Submission Form State
   const [activeAppointment, setActiveAppointment] = useState(null);
   const [medicines, setMedicines] = useState('');
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch allocated appointments for this logged-in Doctor
-  useEffect(() => {
-    const fetchDoctorSchedule = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        
-        // Dynamic endpoint fallback: tries /doctors/appointments then /doctor/appointments
-        const res = await API.get('/doctors/appointments').catch(() => API.get('/doctor/appointments'));
-        
-        if (res.data?.success || Array.isArray(res.data?.data) || Array.isArray(res.data)) {
-          const apptData = res.data?.data || (Array.isArray(res.data) ? res.data : []);
-          setAppointments(apptData);
-        } else {
-          setError(res.data?.message || 'No active appointments found for your doctor ID.');
-        }
-      } catch (err) {
-        console.error("Failed to load doctor clinical records:", err);
-        setError(err.response?.data?.message || 'Failed to fetch assigned clinical logs from the server.');
-      } finally {
-        setLoading(false);
+  // Real-time synchronization function
+  const fetchDoctorSchedule = async () => {
+    try {
+      setError('');
+      const res = await API.get('/doctors/appointments').catch(() => API.get('/doctor/appointments'));
+      
+      if (res.data?.success || Array.isArray(res.data?.data) || Array.isArray(res.data)) {
+        const apptData = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+        setAppointments(apptData);
+      } else {
+        setError(res.data?.message || 'No active appointments found for your doctor ID.');
       }
-    };
+    } catch (err) {
+      console.error("Failed to load doctor clinical records:", err);
+      setError(err.response?.data?.message || 'Failed to fetch assigned clinical logs from the server.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchDoctorSchedule();
   }, []);
 
-  // Updated Prescription Submit Handler with Detailed Fallbacks
   const handlePrescriptionSubmit = async (e) => {
     e.preventDefault();
     
@@ -55,15 +49,13 @@ const DoctorDashboard = () => {
       return;
     }
 
-    // Safely extract Patient ID regardless of Sequelize association structure
     const extractedPatientId = 
       activeAppointment.patientId || 
       activeAppointment.PatientId || 
       activeAppointment.Patient?.id;
 
     if (!extractedPatientId) {
-      alert("Error: Patient ID is missing for this appointment. Check backend doctor/appointments response.");
-      console.error("[RX ERROR] Missing Patient ID in active appointment object:", activeAppointment);
+      alert("Error: Patient ID is missing for this appointment.");
       return;
     }
 
@@ -71,12 +63,6 @@ const DoctorDashboard = () => {
       setIsSubmitting(true);
       setError('');
       setSubmitSuccess('');
-      
-      console.log("[DEBUG-RX] Submitting Payload:", {
-        appointmentId: activeAppointment.id,
-        patientId: extractedPatientId,
-        medicines: medicines
-      });
 
       const res = await API.post('/doctors/prescriptions', {
         appointmentId: activeAppointment.id,
@@ -93,25 +79,16 @@ const DoctorDashboard = () => {
       if (res.data?.success || res.status === 200 || res.status === 201) {
         setSubmitSuccess('Prescription issued successfully!');
         setMedicines('');
-        setActiveAppointment(null); // Clear form desk
+        setActiveAppointment(null);
         
-        // Update local state queue instantly
-        const updated = appointments.map(appt => 
-          appt.id === activeAppointment.id ? { ...appt, status: 'completed' } : appt
-        );
-        setAppointments(updated);
+        // Instant Live Re-fetch (Doctor ki screen par instant clear hoga)
+        await fetchDoctorSchedule();
         
-        // Clear success notification
-        setTimeout(() => setSubmitSuccess(''), 3000);
+        setTimeout(() => setSubmitSuccess(''), 2500);
       }
     } catch (err) {
       console.error("[CRITICAL RX SUBMIT ERROR]:", err);
-      
-      const serverErrorMessage = 
-        err.response?.data?.message || 
-        err.response?.data?.error || 
-        (err.response ? `Server Error (${err.response.status})` : 'Server connection failed.');
-
+      const serverErrorMessage = err.response?.data?.message || 'Server connection failed.';
       setError(serverErrorMessage);
       alert(`Rx Issue Failed: ${serverErrorMessage}`);
     } finally {
