@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth, API } from '../context/AuthContext'; // 🌟 AuthContext se shared API import kiya jisme JWT Token Interceptor pehle se attach hai
+import { useAuth, API } from '../context/AuthContext';
 import { 
   Calendar, FileText, User, LogOut, 
   Activity, Clock, CheckCircle, ShieldAlert, PlusCircle, AlertCircle 
@@ -8,67 +8,65 @@ import {
 const PatientDashboard = () => {
   const { user, logout } = useAuth();
   
-  // Dynamic Tab Routing State
-  const [activeTab, setActiveTab] = useState('appointments'); // 'appointments' | 'prescriptions' | 'profile' | 'book'
-  
-  // Real Database States
+  const [activeTab, setActiveTab] = useState('appointments');
   const [appointments, setAppointments] = useState([]);
   const [prescriptions, setPrescriptions] = useState([]);
-  const [doctors, setDoctors] = useState([]); // Active doctors tracker array
+  const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Booking Form State
   const [bookingData, setBookingData] = useState({ doctorId: '', appointmentDate: '', slot: '10:30 AM' });
   const [bookingSuccess, setBookingSuccess] = useState('');
 
-  // Safe Profile Fallbacks (Fixes 'Welcome, Patient' and 'N/A' issue)
   const userName = user?.name || user?.fullName || 'Patient';
   const userPhone = user?.phone || user?.phoneNumber || 'N/A';
   const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
 
-  // Fetch live pipeline data
-  useEffect(() => {
-    const fetchMedicalRecords = async () => {
-      try {
-        setLoading(true);
-        setError('');
-        console.log("[DEBUG-FRONTEND] Initiating clinical data synchronization...");
-        
-        // Dynamic requests with proper Bearer Token and Multiple Endpoint Fallbacks
-        const [apptRes, prescriptionRes, doctorsRes] = await Promise.all([
-          API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
-          API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } })),
-          // Fallback to /doctors if /patient/available-doctors fails
-          API.get('/doctors').catch(() => API.get('/patient/available-doctors')).catch(() => ({ data: { success: false, data: [] } }))
-        ]);
-        
-        if (apptRes.data?.success || Array.isArray(apptRes.data)) {
-          setAppointments(apptRes.data.data || apptRes.data || []);
-        }
-        if (prescriptionRes.data?.success || Array.isArray(prescriptionRes.data)) {
-          setPrescriptions(prescriptionRes.data.data || prescriptionRes.data || []);
-        }
-        
-        // Flexible Array Extraction for Doctor Dropdown
-        const doctorList = doctorsRes.data?.data || (Array.isArray(doctorsRes.data) ? doctorsRes.data : []);
-        setDoctors(doctorList);
-        
-      } catch (err) {
-        console.error("[CRITICAL FRONTEND FAULT] Sync failure:", err);
-        setError('Failed to sync live clinical data from database pipeline.');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Robust real-time synchronization function
+  const fetchMedicalRecords = async () => {
+    try {
+      setError('');
+      
+      // 1. Fetch Appointments & Prescriptions in parallel
+      const [apptRes, prescriptionRes] = await Promise.all([
+        API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
+        API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } }))
+      ]);
 
+      if (apptRes.data?.success || Array.isArray(apptRes.data)) {
+        setAppointments(apptRes.data.data || apptRes.data || []);
+      }
+      if (prescriptionRes.data?.success || Array.isArray(prescriptionRes.data)) {
+        setPrescriptions(prescriptionRes.data.data || prescriptionRes.data || []);
+      }
+
+      // 2. Direct Doctor Fetch with Bearer Token Header
+      try {
+        const dRes = await API.get('/doctors');
+        const docList = dRes.data?.data || (Array.isArray(dRes.data) ? dRes.data : []);
+        setDoctors(docList);
+      } catch (err) {
+        // Fallback endpoint if /doctors route fails
+        const fallbackRes = await API.get('/patient/available-doctors');
+        const fallbackDocList = fallbackRes.data?.data || (Array.isArray(fallbackRes.data) ? fallbackRes.data : []);
+        setDoctors(fallbackDocList);
+      }
+
+    } catch (err) {
+      console.error("[SYNC FAULT]:", err);
+      setError('Failed to sync live clinical data from database pipeline.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchMedicalRecords();
   }, []);
 
   const handleBookAppointment = async (e) => {
     e.preventDefault();
     
-    // Strict Validation: Stop request if no doctor is selected
     if (!bookingData.doctorId) {
       setError('Please select a valid Medical Practitioner from the dropdown list.');
       return;
@@ -76,22 +74,18 @@ const PatientDashboard = () => {
 
     try {
       setError('');
-      console.log("[DEBUG-BOOKING] Sending payload data:", bookingData);
-      
       const res = await API.post('/patient/appointments', bookingData);
-      if (res.data?.success) {
+      if (res.data?.success || res.status === 200 || res.status === 201) {
         setBookingSuccess('Appointment booked successfully inside clinical infrastructure!');
         
-        // Instantly prepend the newly created record to history view state
-        const newAppointment = res.data.data || res.data;
-        setAppointments((prev) => [newAppointment, ...prev]); 
+        // Instant Live Re-fetch (Bina reload / relogin ke data update hoga)
+        await fetchMedicalRecords(); 
         
-        // Reset state framework fields cleanly
         setTimeout(() => { 
           setActiveTab('appointments'); 
           setBookingSuccess(''); 
           setBookingData({ doctorId: '', appointmentDate: '', slot: '10:30 AM' });
-        }, 1500);
+        }, 1200);
       }
     } catch (err) {
       console.error("[BOOKING FAULT]:", err);
@@ -317,9 +311,9 @@ const PatientDashboard = () => {
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer text-slate-700"
                 >
                   <option value="">-- Choose From Active Practitioners --</option>
-                  {doctors.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      Dr. {doc.name} ({doc.specialization || doc.email})
+                  {doctors.length > 0 && doctors.map((doc) => (
+                    <option key={doc.id || doc._id} value={doc.id || doc._id}>
+                      Dr. {doc.name || doc.fullName} ({doc.specialization || doc.department || doc.email || 'Specialist'})
                     </option>
                   ))}
                 </select>
