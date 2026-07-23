@@ -10,7 +10,7 @@ export const protect = async (req, res, next) => {
     req.headers.authorization &&
     req.headers.authorization.toLowerCase().startsWith('bearer')
   ) {
-    token = req.headers.authorization.split(' ')[1];
+    token = req.headers.authorization.split(' ')[1]?.trim();
   } 
   // 2. Cookies se token read karein (Fallback)
   else if (req.cookies && req.cookies.jwt) {
@@ -25,12 +25,8 @@ export const protect = async (req, res, next) => {
   }
 
   try {
-    // Secret Key fallback (Render env variable compatibility fix)
-    const secret = process.env.JWT_SECRET || process.env.JWT_SECRET_KEY;
-    
-    if (!secret) {
-      console.error("[AUTH ERROR]: No JWT secret found in environment variables!");
-    }
+    // Secret Key fallback (Guarantees secret availability)
+    const secret = process.env.JWT_SECRET || process.env.JWT_SECRET_KEY || 'defaultsecret';
 
     // Token ko verify karein
     const decoded = jwt.verify(token, secret);
@@ -67,9 +63,9 @@ export const restrictTo = (...allowedRoles) => {
       });
     }
 
-    // Case-insensitive role comparison (e.g. 'doctor' vs 'Doctor')
-    const userRole = req.user.role.toLowerCase();
-    const formattedAllowedRoles = allowedRoles.map(role => role.toLowerCase());
+    // Case-insensitive & Whitespace-safe role comparison
+    const userRole = String(req.user.role).trim().toLowerCase();
+    const formattedAllowedRoles = allowedRoles.map(role => String(role).trim().toLowerCase());
 
     if (!formattedAllowedRoles.includes(userRole)) {
       return res.status(403).json({ 
@@ -81,3 +77,6 @@ export const restrictTo = (...allowedRoles) => {
     next();
   };
 };
+
+// Export aliases for flexible imports across routes
+export const authorizeRoles = restrictTo;

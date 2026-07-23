@@ -17,8 +17,11 @@ const DoctorDashboard = () => {
   const [submitSuccess, setSubmitSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Real-time synchronization function
+  // Real-time synchronization function with User Guard Check
   const fetchDoctorSchedule = async () => {
+    // 🌟 User context load hone ka wait karo taaki refresh par 'ACCESS DENIED' na aaye
+    if (!user) return;
+
     try {
       setError('');
       const res = await API.get('/doctors/appointments').catch(() => API.get('/doctor/appointments'));
@@ -37,9 +40,10 @@ const DoctorDashboard = () => {
     }
   };
 
+  // 🌟 Dependency array mein `user` tracking add ki hai
   useEffect(() => {
     fetchDoctorSchedule();
-  }, []);
+  }, [user]);
 
   const handlePrescriptionSubmit = async (e) => {
     e.preventDefault();
@@ -81,7 +85,7 @@ const DoctorDashboard = () => {
         setMedicines('');
         setActiveAppointment(null);
         
-        // Instant Live Re-fetch (Doctor ki screen par instant clear hoga)
+        // Instant Live Re-fetch
         await fetchDoctorSchedule();
         
         setTimeout(() => setSubmitSuccess(''), 2500);
