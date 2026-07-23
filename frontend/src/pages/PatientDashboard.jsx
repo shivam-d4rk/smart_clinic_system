@@ -22,27 +22,40 @@ const PatientDashboard = () => {
   const userPhone = user?.phone || user?.phoneNumber || 'N/A';
   const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
 
-  // Real-time synchronization function
+  // Robust real-time synchronization function
   const fetchMedicalRecords = async () => {
     try {
       setError('');
       
-      const [apptRes, prescriptionRes, doctorsRes] = await Promise.all([
+      // 1. Fetch Appointments & Prescriptions
+      const [apptRes, prescriptionRes] = await Promise.all([
         API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
-        API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } })),
-        API.get('/doctors').catch(() => API.get('/patient/available-doctors')).catch(() => ({ data: { success: false, data: [] } }))
+        API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } }))
       ]);
-      
+
       if (apptRes.data?.success || Array.isArray(apptRes.data)) {
         setAppointments(apptRes.data.data || apptRes.data || []);
       }
       if (prescriptionRes.data?.success || Array.isArray(prescriptionRes.data)) {
         setPrescriptions(prescriptionRes.data.data || prescriptionRes.data || []);
       }
-      
-      const doctorList = doctorsRes.data?.data || (Array.isArray(doctorsRes.data) ? doctorsRes.data : []);
-      setDoctors(doctorList);
-      
+
+      // 2. Fetch Doctors (Tries both possible endpoints)
+      let docData = [];
+      try {
+        const dRes1 = await API.get('/doctors');
+        docData = dRes1.data?.data || (Array.isArray(dRes1.data) ? dRes1.data : []);
+      } catch (e1) {
+        try {
+          const dRes2 = await API.get('/patient/available-doctors');
+          docData = dRes2.data?.data || (Array.isArray(dRes2.data) ? dRes2.data : []);
+        } catch (e2) {
+          console.error("Doctor endpoints failed:", e1, e2);
+        }
+      }
+
+      setDoctors(docData);
+
     } catch (err) {
       console.error("[SYNC FAULT]:", err);
       setError('Failed to sync live clinical data from database pipeline.');
@@ -69,7 +82,7 @@ const PatientDashboard = () => {
       if (res.data?.success || res.status === 200 || res.status === 201) {
         setBookingSuccess('Appointment booked successfully inside clinical infrastructure!');
         
-        // Instant Live Re-fetch (Bina reload / relogin ke data update hoga)
+        // Instant Live Re-fetch
         await fetchMedicalRecords(); 
         
         setTimeout(() => { 
@@ -302,9 +315,9 @@ const PatientDashboard = () => {
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 cursor-pointer text-slate-700"
                 >
                   <option value="">-- Choose From Active Practitioners --</option>
-                  {doctors.map((doc) => (
-                    <option key={doc.id} value={doc.id}>
-                      Dr. {doc.name} ({doc.specialization || doc.email})
+                  {doctors.length > 0 && doctors.map((doc) => (
+                    <option key={doc.id || doc._id} value={doc.id || doc._id}>
+                      Dr. {doc.name || doc.fullName} ({doc.specialization || doc.department || doc.email || 'Specialist'})
                     </option>
                   ))}
                 </select>
