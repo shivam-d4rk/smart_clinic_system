@@ -1,15 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, API } from '../context/AuthContext'; // 🌟 AuthContext se shared API import kiya (jisme Bearer token automatically jata hai)
 import { 
   Users, Clipboard, CheckCircle, LogOut, 
   Activity, Clock, FileText, Send, AlertCircle
 } from 'lucide-react';
-import axios from 'axios';
-
-const API = axios.create({
-  baseURL: 'https://smart-clinic-backend-adym.onrender.com/api',
-  withCredentials: true
-});
 
 const DoctorDashboard = () => {
   const { user, logout } = useAuth();
@@ -31,17 +25,24 @@ const DoctorDashboard = () => {
       try {
         setLoading(true);
         setError('');
-        const res = await API.get('/doctor/appointments');
-        if (res.data.success) {
-          setAppointments(res.data.data);
+        
+        // Dynamic endpoint fallback: tries /doctors/appointments then /doctor/appointments
+        const res = await API.get('/doctors/appointments').catch(() => API.get('/doctor/appointments'));
+        
+        if (res.data?.success || Array.isArray(res.data?.data) || Array.isArray(res.data)) {
+          const apptData = res.data?.data || (Array.isArray(res.data) ? res.data : []);
+          setAppointments(apptData);
+        } else {
+          setError(res.data?.message || 'No active appointments found for your doctor ID.');
         }
       } catch (err) {
         console.error("Failed to load doctor clinical records:", err);
-        setError('Failed to fetch assigned clinical logs from the server.');
+        setError(err.response?.data?.message || 'Failed to fetch assigned clinical logs from the server.');
       } finally {
         setLoading(false);
       }
     };
+
     fetchDoctorSchedule();
   }, []);
 
@@ -77,14 +78,19 @@ const DoctorDashboard = () => {
         medicines: medicines
       });
 
-      const res = await API.post('/doctor/prescriptions', {
+      const res = await API.post('/doctors/prescriptions', {
         appointmentId: activeAppointment.id,
         patientId: extractedPatientId,
         medicines: medicines,
         diagnosis: "General Checkup"
-      });
+      }).catch(() => API.post('/doctor/prescriptions', {
+        appointmentId: activeAppointment.id,
+        patientId: extractedPatientId,
+        medicines: medicines,
+        diagnosis: "General Checkup"
+      }));
 
-      if (res.data.success || res.status === 200 || res.status === 201) {
+      if (res.data?.success || res.status === 200 || res.status === 201) {
         setSubmitSuccess('Prescription issued successfully!');
         setMedicines('');
         setActiveAppointment(null); // Clear form desk
@@ -101,11 +107,10 @@ const DoctorDashboard = () => {
     } catch (err) {
       console.error("[CRITICAL RX SUBMIT ERROR]:", err);
       
-      // Detailed error reporting
       const serverErrorMessage = 
         err.response?.data?.message || 
         err.response?.data?.error || 
-        (err.response ? `Server Error (${err.response.status})` : 'Server connection failed. Is Backend running?');
+        (err.response ? `Server Error (${err.response.status})` : 'Server connection failed.');
 
       setError(serverErrorMessage);
       alert(`Rx Issue Failed: ${serverErrorMessage}`);
@@ -136,7 +141,7 @@ const DoctorDashboard = () => {
             <span className="font-bold text-lg tracking-wide">Doctor Console</span>
           </div>
           <nav className="space-y-2">
-            <button className="w-full flex items-center gap-3 px-4 py-2.5 bg-teal-800 rounded-xl font-medium text-sm text-left">
+            <button className="w-full flex items-center gap-3 px-4 py-2.5 bg-teal-800 rounded-xl font-medium text-sm text-left cursor-pointer">
               <Users className="h-4 w-4" /> Patient Queue
             </button>
           </nav>
@@ -160,7 +165,7 @@ const DoctorDashboard = () => {
 
         <header className="flex justify-between items-center mb-8 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, Dr. {user?.name}</h1>
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome, Dr. {user?.name || user?.fullName || 'Practitioner'}</h1>
             <p className="text-sm text-slate-500">Live Clinical Operations Practitioner Workspace.</p>
           </div>
           <span className="text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200 px-4 py-2 rounded-xl">
@@ -175,7 +180,7 @@ const DoctorDashboard = () => {
             <div>
               <p className="text-sm text-slate-500 font-medium">Pending Consultations</p>
               <h3 className="text-2xl font-bold text-slate-900 mt-0.5">
-                {appointments.filter(a => a.status === 'scheduled').length} Patients
+                {appointments.filter(a => a.status === 'scheduled' || !a.status).length} Patients
               </h3>
             </div>
           </div>
@@ -210,7 +215,7 @@ const DoctorDashboard = () => {
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-sm">
                     {appointments.map((appt) => (
-                      <tr key={appt.id} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={appt.id || Math.random()} className="hover:bg-slate-50/50 transition-colors">
                         <td className="p-4 pl-6 font-semibold text-slate-900">
                           {appt.Patient?.name || appt.patientName || 'Walk-in Patient'}
                         </td>
