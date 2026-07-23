@@ -22,38 +22,50 @@ const PatientDashboard = () => {
   const userPhone = user?.phone || user?.phoneNumber || 'N/A';
   const userIdDisplay = user?.id ? String(user.id).slice(0, 8).toUpperCase() : 'PATIENT';
 
-  // Robust real-time synchronization function
+  // Safe Isolated Synchronization Function
   const fetchMedicalRecords = async () => {
     try {
+      setLoading(true);
       setError('');
       
-      // 1. Fetch Appointments & Prescriptions in parallel
-      const [apptRes, prescriptionRes] = await Promise.all([
-        API.get('/patient/appointments').catch(() => ({ data: { success: false, data: [] } })),
-        API.get('/patient/prescriptions').catch(() => ({ data: { success: false, data: [] } }))
-      ]);
-
-      if (apptRes.data?.success || Array.isArray(apptRes.data)) {
-        setAppointments(apptRes.data.data || apptRes.data || []);
-      }
-      if (prescriptionRes.data?.success || Array.isArray(prescriptionRes.data)) {
-        setPrescriptions(prescriptionRes.data.data || prescriptionRes.data || []);
-      }
-
-      // 2. Direct Doctor Fetch with Bearer Token Header
+      // 1. Safe Appointments Call
       try {
-        const dRes = await API.get('/doctors');
-        const docList = dRes.data?.data || (Array.isArray(dRes.data) ? dRes.data : []);
-        setDoctors(docList);
+        const apptRes = await API.get('/patient/appointments');
+        if (apptRes.data?.success || Array.isArray(apptRes.data)) {
+          setAppointments(apptRes.data.data || apptRes.data || []);
+        }
       } catch (err) {
-        // Fallback endpoint if /doctors route fails
-        const fallbackRes = await API.get('/patient/available-doctors');
-        const fallbackDocList = fallbackRes.data?.data || (Array.isArray(fallbackRes.data) ? fallbackRes.data : []);
-        setDoctors(fallbackDocList);
+        console.warn("Appointments fetch failed silently:", err);
       }
+
+      // 2. Safe Prescriptions Call
+      try {
+        const pxRes = await API.get('/patient/prescriptions');
+        if (pxRes.data?.success || Array.isArray(pxRes.data)) {
+          setPrescriptions(pxRes.data.data || pxRes.data || []);
+        }
+      } catch (err) {
+        console.warn("Prescriptions fetch failed silently:", err);
+      }
+
+      // 3. Safe Doctors Fetching (Tries both routes independently)
+      let docList = [];
+      try {
+        const dRes1 = await API.get('/doctors');
+        docList = dRes1.data?.data || (Array.isArray(dRes1.data) ? dRes1.data : []);
+      } catch (e1) {
+        try {
+          const dRes2 = await API.get('/patient/available-doctors');
+          docList = dRes2.data?.data || (Array.isArray(dRes2.data) ? dRes2.data : []);
+        } catch (e2) {
+          console.error("All doctor endpoints failed:", e1, e2);
+        }
+      }
+
+      setDoctors(docList);
 
     } catch (err) {
-      console.error("[SYNC FAULT]:", err);
+      console.error("[CRITICAL SYNC FAULT]:", err);
       setError('Failed to sync live clinical data from database pipeline.');
     } finally {
       setLoading(false);
@@ -78,7 +90,6 @@ const PatientDashboard = () => {
       if (res.data?.success || res.status === 200 || res.status === 201) {
         setBookingSuccess('Appointment booked successfully inside clinical infrastructure!');
         
-        // Instant Live Re-fetch (Bina reload / relogin ke data update hoga)
         await fetchMedicalRecords(); 
         
         setTimeout(() => { 
